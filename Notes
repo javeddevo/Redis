@@ -1,10 +1,171 @@
-SET key value
+Basics:
+#SET key value (this is how the key and value is store key ios name value is the data/repsosne
+you are accesing the data through key 
 
-SET name javeed
-get name
+#SET name javeed
+get name (output javeed)
 
-
+#to delet key
 del name(to delete) 
 
-to know all the keys
+#to know all the keys
 keys *
+
+#setting the ttl while creating key value
+setex key ttl value
+setex name 60 javeed
+
+========================================================
+import redis
+import json
+from typing import Optional
+
+class RedisCache:
+    def __init__(self, host: str = "localhost", port: int = 6379, db: int = 0, ttl: int = 60):  
+        """Initialize Redis connection."""
+        self.ttl = ttl
+        self.client = redis.Redis(host=host, port=port, db=db, decode_responses=True)
+
+    def generate_key(self, endpoint: str, params: dict) -> str:                                   # thi is will generate unique key to store we dont have to give 
+        """Generate a unique cache key dynamically based on the endpoint and parameters."""
+        param_str = "_".join(f"{k}-{v}" for k, v in sorted(params.items()) if v is not None)
+        return f"{endpoint}_{param_str}" if param_str else endpoint
+
+    def set(self, key: str, value: any):
+        """Store value in Redis with TTL."""
+        self.client.setex(key, self.ttl, json.dumps(value))
+
+    def get(self, key: str) -> Optional[any]:
+        """Retrieve value from Redis."""
+        cached_value = self.client.get(key)
+        return json.loads(cached_value) if cached_value else None
+
+    def delete(self, key: str):
+        """Delete a specific key from Redis."""
+        self.client.delete(key)
+
+# ✅ Create a global cache instance
+cache = RedisCache(ttl=120)   # change accoedingly)
+
+
+=================================================================================================================================
+
+from fastapi import FastAPI, Request
+from redis_cache import cache  # Import the RedisCache instance
+
+app = FastAPI()
+
+@app.get("/")
+def hello(request: Request):
+    """Returns 'helloworld' with caching."""
+    
+    # Generate a unique cache key based on the endpoint
+    cache_key = cache.generate_key(request.url.path, {})(here you dont ahve to specify key static way)
+
+    # Check if response is cached
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        return {"cached": True, "message": cached_data}  # accoedingly you change 
+
+    # Generate response
+    response = "helloworld"   # imagine this sin teh response 
+
+    # Store response in Redis with TTL
+    cache.set(cache_key, response)   #if not cached you are setting cache over here 
+
+    return {"cached": False, "message": response}
+
+
+
+
+========================================================================================
+Just in caase how dynamic name is given to store key 
+How generate_key() Works
+
+def generate_key(self, endpoint: str, params: dict) -> str:
+    """Generate a unique cache key dynamically based on the endpoint and parameters."""
+    param_str = "_".join(f"{k}-{v}" for k, v in sorted(params.items()) if v is not None)
+    return f"{endpoint}_{param_str}" if param_str else endpoint
+
+
+#Explanation
+
+The endpoint path (e.g., "/hello")
+A dictionary of query parameters (e.g., {"name": "Alice"})
+Generates a Key:
+
+Converts the query parameters into a string format like "name-Alice".
+If there are no parameters, it only keeps the endpoint.
+Final Key Output:
+
+"/hello" → "hello" (No query params)
+"/hello?name=Alice" → "hello_name-Alice"
+"/hello?name=Bob" → "hello_name-Bob"
+🚀 Example Key Generation
+📌 Example 1: No Query Parameters
+python
+Copy
+Edit
+cache.generate_key("/hello", {})  
+🔹 Output Key → "hello"
+
+=====================================================
+if you dont want dynamic key want to pass harcoded jey for the response below is the code 
+ --------
+import redis
+import json
+from typing import Any, Optional
+
+class RedisCache:
+    def __init__(self, host: str = "localhost", port: int = 6379, db: int = 0, ttl: int = 60):
+        """Initialize Redis connection."""
+        self.ttl = ttl  # Time to live for cache
+        self.client = redis.Redis(host=host, port=port, db=db, decode_responses=True)
+
+    def set(self, key: str, value: Any):
+        """Store a value in Redis with TTL."""
+        self.client.setex(key, self.ttl, json.dumps(value))
+
+    def get(self, key: str) -> Optional[Any]:
+        """Retrieve a value from Redis."""
+        cached_value = self.client.get(key)
+        return json.loads(cached_value) if cached_value else None
+
+    def delete(self, key: str):
+        """Delete a key from Redis."""
+        self.client.delete(key)
+
+    def flush(self):
+        """Clear all keys in Redis (use carefully)."""
+        self.client.flushdb()
+
+cache = RedisCache(ttl=120)
+=================================================================	
+from fastapi import FastAPI, Depends
+from typing import Dict
+from redis_cache import cache 
+app = FastAPI()
+
+
+@app.get("/data")
+def get_data():
+    cache_key = "data_response"
+
+    # Check if data is in cache
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        return {"cached": True, "data": cached_data}
+
+    # Generate response if not cached
+    response = {"message": "Hello from FastAPI!", "data": [1, 2, 3, 4]}
+    
+    # Store in cache
+    cache.set(cache_key, response)
+
+    return {"cached": False, "data": response}
+
+@app.get("/clear-cache")
+def clear_cache():
+    cache.flush()
+    return {"message": "Cache cleared"}
+
