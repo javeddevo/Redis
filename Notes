@@ -1,0 +1,10 @@
+SET key value
+
+SET name javeed
+get name
+
+
+del name(to delete) 
+
+to know all the keys
+keys *
